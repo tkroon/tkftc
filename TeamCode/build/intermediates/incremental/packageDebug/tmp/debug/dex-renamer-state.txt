@@ -1,4 +1,0 @@
-#Fri Feb 08 20:59:47 EST 2019
-base.0=/Users/tkroon/source/workspace/ftc/tkftc/TeamCode/build/intermediates/transforms/dexMerger/debug/0
-path.0=classes.dex
-renamed.0=classes.dex
