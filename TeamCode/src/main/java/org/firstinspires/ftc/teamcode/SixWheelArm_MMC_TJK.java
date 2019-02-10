@@ -6,48 +6,44 @@ import com.qualcomm.robotcore.util.Range;
 
 @TeleOp
 public class SixWheelArm_MMC_TJK extends LinearOpMode {
-    Robot robot;
-    double pidPower = .20;
-    boolean elbowDriven;
-    double elbowAngle, setElbowAngle;
+    private Robot robot;
+    private double pidPower = .20;
+    private boolean elbowDriven;
+    private double drivePowerScale = 1;
+    private double shoulderPowerScale = .60;
+    private double elbowPowerScale = 1;
+    private double wristIncrement = 0.017;
+    private double setX;
+    private double setY;
 
     @Override
     public void runOpMode() {
-        double drivePowerScale = 1;
-        double shoulderPowerScale = .60;
-        double elbowPowerScale = 1;
-        double driveDirection = 1;
-        double wristIncrement = 0.017;
-
         // initialize Robot
         robot = new Robot(hardwareMap, telemetry, this);
-        setElbowAngle = robot.angle;
 
         waitForStart();
 
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
             robot.readSensors();
-            elbowAngle = robot.angle;
-            telemetry.addData("Set Elbow Angle", setElbowAngle);
             robot.sendTelemetry();
 
             //**************** Drive direction (Controller A) *********************************
             // Control: Y/A :: normal forward drive / alternate 180deg drive
             //***********************************************************************
             if (gamepad1.y){
-                driveDirection = 1; // normal
+                robot.driveDirection = robot.forward;
             }
             // reverse drive for latching maneuver
             if (gamepad1.a){
-                driveDirection = -1; // reverse
+                robot.driveDirection = robot.reverse;
             }
 
             //**************** Drive (Controller A) *********************************
             // Control: Left Stick
             // Proportional drive with left stick (Arcade Style)
             //***********************************************************************
-            double drive = driveDirection * gamepad1.left_stick_y;
+            double drive = robot.driveDirection * gamepad1.left_stick_y;
             double turn  = gamepad1.left_stick_x;
             double leftMotorPower  = Range.clip((drive - turn)* drivePowerScale, -1.0, 1.0);
             double rightMotorPower = Range.clip((drive + turn) * drivePowerScale, -1.0, 1.0);
@@ -71,27 +67,14 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
             // Control: Left stick up/down :: Elbow up/down
             // y moves elbow up and down
             //***********************************************************************
-            if (gamepad1.right_stick_y > 0 && elbowAngle < 250 || //Stick up value  +
-                    gamepad1.right_stick_y < 0 && elbowAngle > 20) { //Stick down value -
+            if (gamepad1.right_stick_y > 0 && robot.elbowAngle < 270 || //Stick up value  +
+                    gamepad1.right_stick_y < 0 && robot.elbowAngle > 20) { //Stick down value -
                 robot.elbowServo.setPower(-gamepad1.right_stick_y * elbowPowerScale);
-                setElbowAngle = elbowAngle;
+                robot.setElbowAngle = robot.elbowAngle;
                 elbowDriven = true;
             } else {
                 robot.elbowServo.setPower(0);
                 elbowDriven = false;
-            }
-
-            // TODO: add code so it automatically collects when shoulder is down and releases when up
-            //**************** Mineral Spinner (Controller A) ***********************
-            // Control: right bumper/trigger :: Spinner release/collect
-            // Trigger dominant collects. Bumper less dominant releases.
-            //***********************************************************************
-            if (gamepad1.right_bumper) {
-                robot.spinnerServo.setPower(-.8); // -releases
-            } else if (gamepad1.right_trigger == 1) {
-                robot.spinnerServo.setPower(+.8); // +collects
-            } else if (gamepad1.right_trigger == 0 & !gamepad1.right_bumper) {
-                robot.spinnerServo.setPower(0); // stop spinning
             }
 
             //**************** Wrist (Controller A) *********************************
@@ -103,7 +86,20 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
                 robot.wristServo.setPosition(robot.wristServo.getPosition() - wristIncrement);
             }
 
-            //**************** Lift (Controller A) **********************************
+            //**************** Mineral Spinner (Controller A) ***********************
+            // Control: right bumper/trigger :: Spinner release/collect
+            // Trigger dominant collects. Bumper less dominant releases.
+            // TODO: add code so it automatically collects when shoulder is down and releases when up
+            //***********************************************************************
+            if (gamepad1.right_bumper) {
+                robot.spinnerServo.setPower(-.8); // -releases
+            } else if (gamepad1.right_trigger == 1) {
+                robot.spinnerServo.setPower(+.8); // +collects
+            } else {
+                robot.spinnerServo.setPower(0); // stop spinning
+            }
+
+            //**************** Lifter (Controller A) **********************************
             // Control: left bumper/trigger :: Lift lift up/down
             // bumper = up Trigger = down
             //***********************************************************************
@@ -111,16 +107,16 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
                 robot.lifter.setPower(-1);
             } else if (gamepad1.left_bumper) {
                 robot.lifter.setPower(1);
-            }
-            else {
+            } else {
                 robot.lifter.setPower(0);
             }
 
+            // keeps elbow up due to dropping weight
             elbowPid();
 
             // TODO: Buttons for: Fold, Retrieve, Dump
-            //**************** Special functions (Controller A) *********************************
-
+            //**************** Special functions (Controller A) *********************
+            // Most of these special functions block other operations until finished
             //***********************************************************************
             // Control: X/B :: shift left/shift right
             //***********************************************************************
@@ -131,13 +127,14 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
                 shiftRobot("left");
             }
 
-            //***********************************************************************
+            //*************** Shift robot left/right ********************************
             // Control: Dpad-left/right :: dump/retrieve
             //     0 Folded :: elbow 169deg :: wrist 0.267
-            // -1200 straight up and down :: alinged elbow angle 85deg
+            // -1200 straight up and down :: aligned elbow angle 85deg
             // -3500 parallel to floor
             //***********************************************************************
             if(gamepad1.dpad_left) {
+                // setShoulderPos blocks operation until it is set
                 robot.setShoulderPos(-1300, .5); // straight up
             }
 
@@ -160,7 +157,7 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
     // negative error means arm above set pos :: need (-) power
     //***********************************************************************
     void elbowPid() {
-        double error = elbowAngle - setElbowAngle;
+        double error = robot.elbowAngle - robot.setElbowAngle;
         telemetry.addData("angle Error", error);
         if (!elbowDriven) {
             if (error < 0) { //negative needs - power arm down
@@ -175,8 +172,8 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
         double heading = robot.getHeading();
         double speed = .2;
         double allowance = 2;
-        int angle = (direction.equals("right")) ? 45 : -45;
-        // shift right
+        double angle = robot.driveDirection * ((direction.equals("right")) ? -45 : +45);
+        // shifts from current "front" direction
         if (gamepad1.b) {
             robot.move(speed, 4);
             robot.setHeading(heading + angle, speed, allowance);

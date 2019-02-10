@@ -34,18 +34,26 @@ public class Robot {
     protected AnalogInput AngleSensor;
     protected Servo avatarServo;
     protected HardwareMap hardwareMap;
-    protected double angle;
+    protected double elbowAngle;
     protected Telemetry telemetry;
     protected boolean shoulderMaxDown;
     protected boolean shoulderMaxUp;
+    protected double setElbowAngle;
+    protected double shoulderAngle;
     private LinearOpMode opMode;
     private BNO055IMU imu;
+    double forward = 1;
+    double reverse = -1;
+    protected double driveDirection = forward;
+    private KinematicsInv kinematics;
+    double correctedelbowAngle;
 
     // Robot constructor creates robot object and sets up all the actuators and sensors
     Robot(HardwareMap hardwareMap, Telemetry telemetry, LinearOpMode opMode) {
         this.hardwareMap = hardwareMap;
         this.telemetry = telemetry;
         this.opMode = opMode;
+        kinematics = new KinematicsInv(15, 12);
 
         //**************** Motors ************************************/
         leftMotor = hardwareMap.get(DcMotor.class, "leftMotor");
@@ -84,6 +92,7 @@ public class Robot {
         readSensors();
         sendTelemetry();
         initImu();
+        setElbowAngle = elbowAngle;
 
         if(shoulderMaxUp) { // if arm is at top limit folded reset encoder to zero
             shoulderMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -106,16 +115,27 @@ public class Robot {
         telemetry.addData("Spinner servo", spinnerServo.getPower());
         telemetry.addData("wrist servo port ", wristServo.getPosition());
         telemetry.addData("volts", AngleSensor.getVoltage());
-        telemetry.addData("Angle", angle);
+        telemetry.addData("Elbow Angle", elbowAngle);
+        telemetry.addData("Elbow Set angle", setElbowAngle);
+        telemetry.addData("Elbow Corrected ngle", correctedelbowAngle);
+        telemetry.addData("Shoulder Angle", shoulderAngle);
         telemetry.addData("Shoulder Encoder", shoulderMotor.getCurrentPosition());
+        double[] angles = kinematics.angles(15.0,12.0);
+        telemetry.addData("Kinematic shoulder", angles[0]);
+        telemetry.addData("Kinematic eblow", angles[1]);
         telemetry.update();
     }
 
-    // Reads and sets sensor values on robot for OpMode to use
+    // Reads and sets sensor values on robot for OpMode to
+    // 90deg shoulder -1200 straight up and down :: aligned elbow angle 85deg
+    // 0deg shoulder -3500 parallel to floor
+    // 25 encoder clicks to a degree
     void readSensors() {
         shoulderMaxDown = !shoulderDownLimit.getState();
         shoulderMaxUp = !shoulderUpLimit.getState();
-        angle = (AngleSensor.getVoltage()) * 81;
+        elbowAngle = AngleSensor.getVoltage() * 81;
+        shoulderAngle = shoulderMotor.getCurrentPosition()/25 + 142;
+        correctedelbowAngle = 274 - elbowAngle;
     }
 
     private void initImu() {
@@ -192,7 +212,6 @@ public class Robot {
     // Move shoulder speed and position
     void setShoulderPos(int position, double speed) {
         if (opMode.opModeIsActive()) {
-
             shoulderMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             shoulderMotor.setTargetPosition(position);
             shoulderMotor.setPower(speed);
