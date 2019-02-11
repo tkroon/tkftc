@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.util.Range;
 
 @TeleOp
@@ -13,8 +14,6 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
     private double shoulderPowerScale = .60;
     private double elbowPowerScale = 1;
     private double wristIncrement = 0.017;
-    private double setX;
-    private double setY;
 
     @Override
     public void runOpMode() {
@@ -29,14 +28,14 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
             robot.sendTelemetry();
 
             //**************** Drive direction (Controller A) *********************************
-            // Control: Y/A :: normal forward drive / alternate 180deg drive
+            // Control: left_stick_button :: normal forward drive / alternate 180deg drive
             //***********************************************************************
-            if (gamepad1.y){
-                robot.driveDirection = robot.forward;
-            }
-            // reverse drive for latching maneuver
-            if (gamepad1.a){
-                robot.driveDirection = robot.reverse;
+            if (gamepad1.left_stick_button){
+                if (robot.driveDirection == 1) {
+                    robot.driveDirection = -1;
+                } else {
+                    robot.driveDirection = 1;
+                }
             }
 
             //**************** Drive (Controller A) *********************************
@@ -50,42 +49,59 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
             robot.leftMotor.setPower(leftMotorPower);
             robot.rightMotor.setPower(rightMotorPower);
 
-            //**************** Shoulder (Controller A) ******************************
-            // Control: Right stick left/right :: Shoulder in/out
-            // so x moves shoulder in and out (down/out -) (up/in +)
-            // stick left - / right +
-            // y moves elbow up and down
-            //***********************************************************************
-            if (gamepad1.right_stick_x > 0 && !robot.shoulderMaxDown || //Stick right value  +
-                gamepad1.right_stick_x < 0 && !robot.shoulderMaxUp) { //Stick left value -
-                robot.shoulderMotor.setPower(-gamepad1.right_stick_x * shoulderPowerScale);
-            } else {
-                robot.shoulderMotor.setPower(0);
+            //**************** Arm Control (Controller A) ******************************
+            // mode is kinematic or manual
+            //**************************************************************************
+            // Switch between kinematic and manual pushing down right stick
+            if (gamepad1.right_stick_button) {
+                robot.kinematicEnabled = !robot.kinematicEnabled;
             }
 
-            //**************** Elbow (Controller A) *********************************
-            // Control: Left stick up/down :: Elbow up/down
-            // y moves elbow up and down
-            //***********************************************************************
-            if (gamepad1.right_stick_y > 0 && robot.elbowAngle < 270 || //Stick up value  +
-                    gamepad1.right_stick_y < 0 && robot.elbowAngle > 20) { //Stick down value -
-                robot.elbowServo.setPower(-gamepad1.right_stick_y * elbowPowerScale);
-                robot.setElbowAngle = robot.elbowAngle;
-                elbowDriven = true;
-            } else {
-                robot.elbowServo.setPower(0);
+            if (robot.kinematicEnabled) {
+                robot.armTargetX += gamepad1.right_stick_x/2;
+                robot.armTargetY -= gamepad1.right_stick_y/2;
+                robot.armTargetX = Range.clip(robot.armTargetX, 0,27);
+                robot.armTargetY = Range.clip(robot.armTargetY, 0,27);
                 elbowDriven = false;
-            }
+                robot.executeKinematics();
+            } else {
+                //**************** Shoulder (Controller A) ******************************
+                // Control: Right stick left/right :: Shoulder in/out
+                // so x moves shoulder in and out (down/out -) (up/in +)
+                // stick left - / right +
+                // y moves elbow up and down
+                //***********************************************************************
+                robot.shoulderMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+                if (gamepad1.right_stick_x > 0 && !robot.shoulderMaxDown || //Stick right value  +
+                        gamepad1.right_stick_x < 0 && !robot.shoulderMaxUp) { //Stick left value -
+                    robot.shoulderMotor.setPower(-gamepad1.right_stick_x * shoulderPowerScale);
+                } else {
+                    robot.shoulderMotor.setPower(0);
+                }
 
-            //**************** Wrist (Controller A) *********************************
-            // Control: Dpad up/down :: Wrist up/down
-            //***********************************************************************
-            if (gamepad1.dpad_up) {
-                robot.wristServo.setPosition(robot.wristServo.getPosition() + wristIncrement);
-            } else if (gamepad1.dpad_down) {
-                robot.wristServo.setPosition(robot.wristServo.getPosition() - wristIncrement);
-            }
+                //**************** Elbow (Controller A) *********************************
+                // Control: Left stick up/down :: Elbow up/down
+                // y moves elbow up and down
+                //***********************************************************************
+                if (gamepad1.right_stick_y > 0 && robot.elbowAngle < 270 || //Stick up value  +
+                        gamepad1.right_stick_y < 0 && robot.elbowAngle > 2) { //Stick down value -
+                    robot.elbowServo.setPower(-gamepad1.right_stick_y * elbowPowerScale);
+                    robot.setElbowAngle = robot.elbowAngle;
+                    elbowDriven = true;
+                } else {
+                    robot.elbowServo.setPower(0);
+                    elbowDriven = false;
+                }
 
+                //**************** Wrist (Controller A) *********************************
+                // Control: Dpad up/down :: Wrist up/down
+                //***********************************************************************
+                if (gamepad1.dpad_up) {
+                    robot.wristServo.setPosition(robot.wristServo.getPosition() + wristIncrement);
+                } else if (gamepad1.dpad_down) {
+                    robot.wristServo.setPosition(robot.wristServo.getPosition() - wristIncrement);
+                }
+            }
             //**************** Mineral Spinner (Controller A) ***********************
             // Control: right bumper/trigger :: Spinner release/collect
             // Trigger dominant collects. Bumper less dominant releases.
@@ -157,13 +173,13 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
     // negative error means arm above set pos :: need (-) power
     //***********************************************************************
     void elbowPid() {
-        double error = robot.elbowAngle - robot.setElbowAngle;
+        double error = robot.setElbowAngle - robot.elbowAngle;
         telemetry.addData("angle Error", error);
         if (!elbowDriven) {
-            if (error < 0) { //negative needs - power arm down
-                robot.elbowServo.setPower(-pidPower); // error is negative here
-            } else if (error > 0) { // positive needs + power arm up
+            if (error > 0) { //posivite needs + power arm up
                 robot.elbowServo.setPower(pidPower + (error / 11));
+            } else if (error < 0) { // negative needs - power arm down
+                robot.elbowServo.setPower(-pidPower + (error / 11));
             }
         }
     }
