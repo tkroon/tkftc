@@ -21,6 +21,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
  */
 
 public class Robot {
+    // System components
     protected DcMotor leftMotor;
     protected DigitalChannel shoulderDownLimit;
     protected DigitalChannel shoulderUpLimit;
@@ -34,26 +35,29 @@ public class Robot {
     protected AnalogInput AngleSensor;
     protected Servo avatarServo;
     protected HardwareMap hardwareMap;
-    protected double elbowAngle;
     protected Telemetry telemetry;
+    private LinearOpMode opMode;
+    private BNO055IMU imu;
+    // operational values
+    protected double elbowAngle;
     protected boolean shoulderMaxDown;
     protected boolean shoulderMaxUp;
     protected double setElbowAngle;
     protected double shoulderAngle;
-    private LinearOpMode opMode;
-    private BNO055IMU imu;
-    double forward = 1;
-    double reverse = -1;
-    protected double driveDirection = forward;
+    protected double wristAngle;
+    protected boolean kinematicEnabled = false;
+    protected double driveDirection = 1;
+    protected double armTargetX = 9;
+    protected double armTargetY = 2;
+    double angles[];
     private KinematicsInv kinematics;
-    double correctedelbowAngle;
 
     // Robot constructor creates robot object and sets up all the actuators and sensors
     Robot(HardwareMap hardwareMap, Telemetry telemetry, LinearOpMode opMode) {
         this.hardwareMap = hardwareMap;
         this.telemetry = telemetry;
         this.opMode = opMode;
-        kinematics = new KinematicsInv(15, 12);
+        kinematics = new KinematicsInv(15, 12, 0, 142, 5, 180, 0, 90);
 
         //**************** Motors ************************************/
         leftMotor = hardwareMap.get(DcMotor.class, "leftMotor");
@@ -105,24 +109,26 @@ public class Robot {
 
     // Sends messages and values to bottom of driver's screen
     void sendTelemetry() {
-        telemetry.addData("Status", "Running");
-        telemetry.addData("ShoulderMaxDown", shoulderMaxDown);
-        telemetry.addData("ShoulderMaxUp", shoulderMaxUp);
-        telemetry.addData("Left Motor Power", leftMotor.getPower());
-        telemetry.addData("Right Motor Power", rightMotor.getPower());
-        telemetry.addData("Shoulder Servo port 1", shoulderMotor.getPower());
-        telemetry.addData("Elbow servo port 2", elbowServo.getPower());
-        telemetry.addData("Spinner servo", spinnerServo.getPower());
-        telemetry.addData("wrist servo port ", wristServo.getPosition());
-        telemetry.addData("volts", AngleSensor.getVoltage());
+        //telemetry.addData("Status", "Running");
+
+        //telemetry.addData("Left Motor Power", leftMotor.getPower());
+        //telemetry.addData("Right Motor Power", rightMotor.getPower());
+        //telemetry.addData("Shoulder Servo port 1", shoulderMotor.getPower());
+        //telemetry.addData("Elbow servo port 2", elbowServo.getPower());
+        //telemetry.addData("Spinner servo", spinnerServo.getPower());
+        telemetry.addData("wrist servo", wristServo.getPosition());
+        //telemetry.addData("volts", AngleSensor.getVoltage());
+
+        //telemetry.addData("ShoulderMaxDown", shoulderMaxDown);
+        //telemetry.addData("ShoulderMaxUp", shoulderMaxUp);
+
         telemetry.addData("Elbow Angle", elbowAngle);
         telemetry.addData("Elbow Set angle", setElbowAngle);
-        telemetry.addData("Elbow Corrected ngle", correctedelbowAngle);
         telemetry.addData("Shoulder Angle", shoulderAngle);
         telemetry.addData("Shoulder Encoder", shoulderMotor.getCurrentPosition());
-        double[] angles = kinematics.angles(15.0,12.0);
-        telemetry.addData("Kinematic shoulder", angles[0]);
-        telemetry.addData("Kinematic eblow", angles[1]);
+        telemetry.addData("Kinematics On:",kinematicEnabled);
+        telemetry.addData("armTargetX", armTargetX);
+        telemetry.addData("armTargetY", armTargetY);
         telemetry.update();
     }
 
@@ -133,9 +139,9 @@ public class Robot {
     void readSensors() {
         shoulderMaxDown = !shoulderDownLimit.getState();
         shoulderMaxUp = !shoulderUpLimit.getState();
-        elbowAngle = AngleSensor.getVoltage() * 81;
+        elbowAngle = 274 - AngleSensor.getVoltage() * 81;
         shoulderAngle = shoulderMotor.getCurrentPosition()/25 + 142;
-        correctedelbowAngle = 274 - elbowAngle;
+        wristAngle = wristServo.getPosition();
     }
 
     private void initImu() {
@@ -163,7 +169,6 @@ public class Robot {
             leftMotor.setPower(speed);
             rightMotor.setPower(speed);
             while ((leftMotor.isBusy() || rightMotor.isBusy()) && opMode.opModeIsActive()) {
-                //telemetry.addData("rot about Z", getHeading());
                 telemetry.addData("Left Encoder", leftMotor.getCurrentPosition());
                 telemetry.addData("Right Encoder", rightMotor.getCurrentPosition());
                 telemetry.update();
@@ -222,5 +227,31 @@ public class Robot {
             shoulderMotor.setPower(0);
             shoulderMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         }
+    }
+
+    // overload with no parameter constructor
+    void executeKinematics() {
+        executeKinematics(armTargetX, armTargetY);
+    }
+
+    // method to execute and run the Kinematics for the arm
+    void executeKinematics(double x, double y) {
+        angles = kinematics.angles(x,y);
+        telemetry.addData("Kinematic shoulder", angles[0]);
+        telemetry.addData("Kinematic elbow", angles[1]);
+        telemetry.addData("Kinematic wrist", angles[2]);
+
+        // **** Shoulder ****
+        if(!Double.isNaN(angles[0])) {
+            shoulderMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            int position = (int)Math.round((angles[0] -142) * 25);
+            shoulderMotor.setTargetPosition(position);
+            shoulderMotor.setPower(.8);
+        }
+
+        // **** Elbow ****
+        setElbowAngle = angles[1];
+
+        // **** Wrist ****
     }
 }
