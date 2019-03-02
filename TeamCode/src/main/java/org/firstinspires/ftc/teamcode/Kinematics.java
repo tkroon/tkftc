@@ -8,23 +8,23 @@ import com.qualcomm.robotcore.util.Range;
  *
  */
 
-public class KinematicsInv {
+public class Kinematics {
     //The lengths of the two segments of the robot’s arm. Using the same length for both
     // segments allows the robot to reach the (0,0) coordinate.
     private double len1;
     private double len2;
     private double angleLimits [][] = {{0, 90}, {0, 90}, {0, 90}};
-
+    private KinematicData kd;
 
     // Kinematics constructor
-    KinematicsInv(double len1, double len2) {
+    Kinematics(double len1, double len2) {
         this.len1 = len1;
         this.len2 = len2;
+        kd = new KinematicData(90,90,90,0,5);
     }
 
-    KinematicsInv(double len1, double len2, int minA1, int maxA1, int minA2, int maxA2, int minA3, int maxA3) {
-        this.len1 = len1;
-        this.len2 = len2;
+    Kinematics(double len1, double len2, int minA1, int maxA1, int minA2, int maxA2, int minA3, int maxA3) {
+        this(len1, len2);
         angleLimits[0][0] = minA1;
         angleLimits[0][1] = maxA1;
         angleLimits[1][0] = minA2;
@@ -45,23 +45,34 @@ public class KinematicsInv {
     }
 
     // Calculating the two joint angles for given x and y.
-    public double[] angles(double x, double y) {
-        double[] angles = new double[] {0,0,0};
+    public KinematicData calculate(double x, double y) {
         // First, get the length of line dist.
         double dist = distance(x, y);
         // Calculating angle A1 is trivial. Atan2 is a modified arctan() function that
         // returns unambiguous results.
-        double A1 = Math.atan2(y, x);
-        // A2 can be calculated using the law of cosines
+        double Ap1 = Math.atan2(y, x);
+        // Ap2 can be calculated using the law of cosines
         // where a = dist, b = len1, and c = len2.
-        double A2 = lawOfCosines(dist, len1, len2);
-        // Then angles[0] is simply the sum of D1 and D2.
-        angles[0] = Range.clip(Math.toDegrees(A1 + A2),angleLimits[0][0],angleLimits[0][1]);
-        // angles[1] can also be calculated with the law of cosine,
+        double Ap2 = lawOfCosines(dist, len1, len2);
+        // Then A1 is simply the sum of Ap1 and Ap2.
+        double A1 = Math.toDegrees(Ap1 + Ap2);
+        // A2 can also be calculated with the law of cosine,
         // but this time with a = len1, b = len2, and c = dist.
-        angles[1] = Range.clip(Math.toDegrees(lawOfCosines(len1, len2, dist)),angleLimits[1][0],angleLimits[1][1]);
+        double A2 = Math.toDegrees(lawOfCosines(len1, len2, dist));
         // compute angle D3
-        angles[2] = Range.clip(angles[0] + angles[1],angleLimits[2][0],angleLimits[2][1]);;
-        return angles;
+        double A3 = A1 + A2;
+        if (!Double.isNaN(A1) && !Double.isNaN(A2) && !Double.isNaN(A3)) {
+            A1 = Range.clip(A1,angleLimits[0][0],angleLimits[0][1]);
+            A2 = Range.clip(A2,angleLimits[1][0],angleLimits[1][1]);
+            A3 = Range.clip(A3,angleLimits[2][0],angleLimits[2][1]);
+            kd.setShoulder(A1);
+            kd.setElbow(A2);
+            kd.setWrist(A3);
+            kd.setX(x);
+            kd.setY(y);
+            return kd;
+        } else {
+            return kd;
+        }
     }
 }

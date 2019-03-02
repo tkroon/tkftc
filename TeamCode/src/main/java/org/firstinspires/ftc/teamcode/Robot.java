@@ -19,45 +19,16 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
  * Abstracts all the parts of the Robot to clarify the OpMode
  * Inputs: takes the hardwareMap and telemetry from the opmode's context
  */
-
 public class Robot {
-    // System components
-    protected DcMotor leftMotor;
-    protected DigitalChannel shoulderDownLimit;
-    protected DigitalChannel shoulderUpLimit;
-    protected CRServo elbowServo;
-    protected Servo clawServo;
-    protected Servo wristServo;
-    protected DcMotor rightMotor;
-    protected DcMotor lifter;
-    protected DcMotor shoulderMotor;
-    protected CRServo spinnerServo;
-    protected AnalogInput AngleSensor;
-    protected Servo avatarServo;
-    protected HardwareMap hardwareMap;
-    protected Telemetry telemetry;
-    private LinearOpMode opMode;
-    private BNO055IMU imu;
-    // operational values
-    protected double elbowAngle;
-    protected boolean shoulderMaxDown;
-    protected boolean shoulderMaxUp;
-    protected double setElbowAngle;
-    protected double shoulderAngle;
-    protected double wristAngle;
-    protected boolean kinematicEnabled = false;
-    protected double driveDirection = 1;
-    protected double armTargetX = 9;
-    protected double armTargetY = 2;
-    double angles[];
-    private KinematicsInv kinematics;
-
     // Robot constructor creates robot object and sets up all the actuators and sensors
     Robot(HardwareMap hardwareMap, Telemetry telemetry, LinearOpMode opMode) {
         this.hardwareMap = hardwareMap;
         this.telemetry = telemetry;
         this.opMode = opMode;
-        kinematics = new KinematicsInv(15, 12, 0, 142, 5, 180, 0, 90);
+        // upper arm length; lower arm length; shoulder min,max; elbow min,max; wrist min,max
+        kinematics = new Kinematics(15, 12, 0, 142, 5, 180, 0, 90);
+        //Kp, Ti, Td, IntegralMin, IntegralMax, -OutputMin, OutputMax
+        pidElbow =  new Pid(.2, .03, .03, -.05, .05, -.5, .5);
 
         //**************** Motors ************************************/
         leftMotor = hardwareMap.get(DcMotor.class, "leftMotor");
@@ -109,18 +80,7 @@ public class Robot {
 
     // Sends messages and values to bottom of driver's screen
     void sendTelemetry() {
-        //telemetry.addData("Status", "Running");
-
-        //telemetry.addData("Left Motor Power", leftMotor.getPower());
-        //telemetry.addData("Right Motor Power", rightMotor.getPower());
-        //telemetry.addData("Shoulder Servo port 1", shoulderMotor.getPower());
-        //telemetry.addData("Elbow servo port 2", elbowServo.getPower());
-        //telemetry.addData("Spinner servo", spinnerServo.getPower());
         telemetry.addData("wrist servo", wristServo.getPosition());
-        //telemetry.addData("volts", AngleSensor.getVoltage());
-
-        //telemetry.addData("ShoulderMaxDown", shoulderMaxDown);
-        //telemetry.addData("ShoulderMaxUp", shoulderMaxUp);
 
         telemetry.addData("Elbow Angle", elbowAngle);
         telemetry.addData("Elbow Set angle", setElbowAngle);
@@ -132,18 +92,21 @@ public class Robot {
         telemetry.update();
     }
 
-    // Reads and sets sensor values on robot for OpMode to
-    // 90deg shoulder -1200 straight up and down :: aligned elbow angle 85deg
-    // 0deg shoulder -3500 parallel to floor
-    // 25 encoder clicks to a degree
+    /** ************** Elbow PID ********************************************
+    * Reads and sets sensor values on robot for OpMode to
+    * 90deg shoulder -1200 straight up and down :: aligned elbow angle 85deg
+    * 0deg shoulder -3500 parallel to floor
+    * shoulderEncoderPerDegree encoder clicks to a degree
+     ************** Elbow PID ********************************************/
     void readSensors() {
         shoulderMaxDown = !shoulderDownLimit.getState();
         shoulderMaxUp = !shoulderUpLimit.getState();
         elbowAngle = 274 - AngleSensor.getVoltage() * 81;
-        shoulderAngle = shoulderMotor.getCurrentPosition()/25 + 142;
+        shoulderAngle = shoulderMotor.getCurrentPosition()/shoulderEncoderPerDegree + shoulderAngleShift;
         wristAngle = wristServo.getPosition();
     }
 
+    // Initialize the imu within the expansion hub
     private void initImu() {
         BNO055IMU.Parameters imuParameters;
         // Create new IMU Parameters object.
@@ -180,6 +143,7 @@ public class Robot {
         }
     }
 
+    // Get the Robot heading
     float getHeading() {
         Orientation angles;
         // Get absolute orientation
@@ -187,6 +151,7 @@ public class Robot {
         return angles.firstAngle;
     }
 
+    // Set the robot heading
     void setHeading(double tgtHeading, double speed, double allowance) {
         float heading;
 
@@ -221,6 +186,9 @@ public class Robot {
             shoulderMotor.setTargetPosition(position);
             shoulderMotor.setPower(speed);
             while (shoulderMotor.isBusy() && opMode.opModeIsActive()) {
+                if(shoulderMaxUp || shoulderMaxDown) {
+                    shoulderMotor.setPower(0);
+                }
                 telemetry.addData("Shoulder Encoder", shoulderMotor.getCurrentPosition());
                 telemetry.update();
             }
@@ -229,29 +197,104 @@ public class Robot {
         }
     }
 
-    // overload with no parameter constructor
     void executeKinematics() {
-        executeKinematics(armTargetX, armTargetY);
-    }
-
-    // method to execute and run the Kinematics for the arm
-    void executeKinematics(double x, double y) {
-        angles = kinematics.angles(x,y);
-        telemetry.addData("Kinematic shoulder", angles[0]);
-        telemetry.addData("Kinematic elbow", angles[1]);
-        telemetry.addData("Kinematic wrist", angles[2]);
+        KinematicData kd = kinematics.calculate(armTargetX,armTargetY);
+        // returns current valid x and y
+        armTargetX = kd.getX();
+        armTargetY = kd.getY();
+        telemetry.addData("Kinematic shoulder", kd.getShoulder());
+        telemetry.addData("Kinematic elbow", kd.getElbow());
+        telemetry.addData("Kinematic wrist", kd.getWrist());
 
         // **** Shoulder ****
-        if(!Double.isNaN(angles[0])) {
+        if(!Double.isNaN(kd.getShoulder())) {
             shoulderMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-            int position = (int)Math.round((angles[0] -142) * 25);
+            int position = (int)Math.round((kd.getShoulder() - shoulderAngleShift) * shoulderEncoderPerDegree);
             shoulderMotor.setTargetPosition(position);
             shoulderMotor.setPower(.8);
         }
 
         // **** Elbow ****
-        setElbowAngle = angles[1];
+        setElbowAngle = kd.getElbow();
 
         // **** Wrist ****
     }
+
+    /** ************** Elbow PID ********************************************
+    * Keep elbow at last set angle.
+    * elbow up + / down -
+    * 90deg straight up
+    * angle gets greater as forearm moves to floor
+    * positive error means arm below set pos :: need (+) power
+    * negative error means arm above set pos :: need (-) power
+     *************************************************************************/
+    void elbowPid(double pidPower) {
+        double error = setElbowAngle - elbowAngle;
+        telemetry.addData("angle Error", error);
+        if (!elbowDriven) {
+            if (error > 0) { //posivite needs + power arm up
+                elbowServo.setPower(pidPower + (error / 11));
+            } else { // negative needs - power arm down
+                elbowServo.setPower(-pidPower + (error / 11));
+            }
+        }
+    }
+
+    // shift the robot right/left a fixed amount
+    void shift(String direction) {
+        double heading = getHeading();
+        double speed = .2;
+        double allowance = 2;
+        double angle = driveDirection * ((direction.equals("right")) ? -45 : +45);
+        // shifts from current "front" direction
+        move(speed, 4);
+        setHeading(heading + angle, speed, allowance);
+        move(speed, 2.8);
+        setHeading(heading, speed, allowance);
+        move(speed, -6);
+    }
+
+    // Variable Definitions for Robot
+    // System
+    protected DcMotor leftMotor;
+    protected DigitalChannel shoulderDownLimit;
+    protected DigitalChannel shoulderUpLimit;
+    protected CRServo elbowServo;
+    protected Servo clawServo;
+    protected Servo wristServo;
+    protected DcMotor rightMotor;
+    protected DcMotor lifter;
+    protected DcMotor shoulderMotor;
+    protected CRServo spinnerServo;
+    protected AnalogInput AngleSensor;
+    protected Servo avatarServo;
+    protected HardwareMap hardwareMap;
+    protected Telemetry telemetry;
+    private LinearOpMode opMode;
+    private BNO055IMU imu;
+    // operational values
+    protected double elbowAngle;
+    protected boolean shoulderMaxDown;
+    protected boolean shoulderMaxUp;
+    protected double setElbowAngle;
+    protected double shoulderAngle;
+    protected double wristAngle;
+    protected boolean kinematicEnabled = false;
+    protected double driveDirection = 1;
+    protected double armTargetX = 0;
+    protected double armTargetY = 5;
+    protected boolean elbowDriven = false;
+    protected Pid pidElbow;
+    private double shoulderAngleShift = 142;
+    private double shoulderEncoderPerDegree = 25;
+    private Kinematics kinematics;
+
+    private final double elbowPidKp = .2;     // Scale Angle error to servo speed
+    private final double elbowPidTi = .2;   // Eliminate integral error in 1 sec.
+    private final double elbowPidTd = .1;   // Account for error in 0.1 sec.
+    // Protect against integral windup by limiting integral term.
+    private final double elbowPidIntMax = 1.0;  // Limit to max speed.
+    private final double elbowOutMax = 1.0;  // Motor output limited to 100%.
+    private final double elbowPidIntMin = 0;  // Limit to max speed.
+    private final double elbowOutMin = 0;  // Motor output limited to 100%.
 }
