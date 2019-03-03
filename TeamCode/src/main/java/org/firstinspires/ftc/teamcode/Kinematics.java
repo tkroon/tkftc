@@ -60,7 +60,7 @@ public class Kinematics {
         // but this time with a = len1, b = len2, and c = dist.
         double A2 = Math.toDegrees(lawOfCosines(len1, len2, dist));
         // compute angle D3
-        double A3 = A1 + A2;
+        double A3 = 360 - (A1 + A2);
         if (!Double.isNaN(A1) && !Double.isNaN(A2) && !Double.isNaN(A3)) {
             A1 = Range.clip(A1,angleLimits[0][0],angleLimits[0][1]);
             A2 = Range.clip(A2,angleLimits[1][0],angleLimits[1][1]);

@@ -26,7 +26,7 @@ public class Robot {
         this.telemetry = telemetry;
         this.opMode = opMode;
         // upper arm length; lower arm length; shoulder min,max; elbow min,max; wrist min,max
-        kinematics = new Kinematics(15, 12, 0, 142, 5, 180, 0, 90);
+        kinematics = new Kinematics(15, 12, 0, 142, 5, 180, 0, 220);
 
         //**************** Motors ************************************/
         leftMotor = hardwareMap.get(DcMotor.class, "leftMotor");
@@ -79,7 +79,6 @@ public class Robot {
     // Sends messages and values to bottom of driver's screen
     void sendTelemetry() {
         telemetry.addData("wrist servo", wristServo.getPosition());
-
         telemetry.addData("Elbow Angle", elbowAngle);
         telemetry.addData("Elbow Set angle", setElbowAngle);
         telemetry.addData("Shoulder Angle", shoulderAngle);
@@ -215,7 +214,12 @@ public class Robot {
         // **** Elbow ****
         setElbowAngle = kd.getElbow();
 
-        // **** Wrist ****
+        // **** Wrist **** .00453 servo/degree
+        if(!Double.isNaN(kd.getWrist())) {
+            double wristPosition = (kd.getWrist()) * .00453;
+            wristServo.setPosition(wristPosition);
+            telemetry.addData("Wrist servo value", wristPosition);
+        }
     }
 
     // shift the robot right/left a fixed amount

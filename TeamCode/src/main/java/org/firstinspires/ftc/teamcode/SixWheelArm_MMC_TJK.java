@@ -27,6 +27,7 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
             robot.readSensors();
+            robot.sendTelemetry();
 
             //**************** Drive direction toggle (Controller A) *********************
             // Control: left_stick_button :: normal forward drive / alternate 180deg drive
