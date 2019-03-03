@@ -24,18 +24,22 @@ public class PIDController
     private double m_setpoint = 0.0;
     private double m_error = 0.0;
     private double m_result = 0.0;
+    private double m_Scale = 20;
 
     /**
      * Allocate a PID object with the given constants for P, I, D
      * @param Kp the proportional coefficient
      * @param Ki the integral coefficient
      * @param Kd the derivative coefficient
+     * @param opScale the scale of error for the output value
      */
-    public PIDController(double Kp, double Ki, double Kd)
+
+    public PIDController(double Kp, double Ki, double Kd, double opScale)
     {
         m_P = Kp;
         m_I = Ki;
         m_D = Kd;
+        m_Scale = opScale;
     }
 
     /**
@@ -79,6 +83,9 @@ public class PIDController
             m_prevError = m_error;
 
             if (m_result < 0) sign = -1;    // Record sign of result.
+
+            // scale error result into motor speed adjustment
+            m_result = m_result/m_Scale;
 
             // Make sure the final result is within bounds. If we constrain the result, we make
             // sure the sign of the constrained result matches the original result sign.

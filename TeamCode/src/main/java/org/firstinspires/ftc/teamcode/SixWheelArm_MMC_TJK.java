@@ -13,33 +13,25 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
     private double shoulderPowerScale = .60;
     private double elbowPowerScale = 1;
     private double wristIncrement = 0.017;
-    ElapsedTime elapsedTimer;
+    //ElapsedTime elapsedTimer;
 
     @Override
     public void runOpMode() {
         // initialize Robot
         robot = new Robot(hardwareMap, telemetry, this);
-        elapsedTimer = new ElapsedTime();
+        PIDController pid = new PIDController(.2,.03,.03, 20);
+        pid.enable();
 
         waitForStart();
-        elapsedTimer.reset();
 
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
             robot.readSensors();
 
-            // PID Elbow correction
-            double elbowSpeed = robot.pidElbow.update(robot.setElbowAngle, robot.elbowAngle, elapsedTimer.seconds());
-            robot.elbowServo.setPower(elbowSpeed);
-            elapsedTimer.reset();
-
-            telemetry.addData("Elbow PID Speed", elbowSpeed);
-            robot.sendTelemetry();
-
             //**************** Drive direction toggle (Controller A) *********************
             // Control: left_stick_button :: normal forward drive / alternate 180deg drive
             //****************************************************************************
-            if (gamepad1.left_stick_button){
+            if (gamepad1.left_stick_button) {
                 if (robot.driveDirection == 1) {
                     robot.driveDirection = -1;
                 } else {
@@ -61,19 +53,20 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
             // Proportional drive with left stick (Arcade Style)
             //***********************************************************************
             double drive = robot.driveDirection * gamepad1.left_stick_y;
-            double turn  = gamepad1.left_stick_x;
-            double leftMotorPower  = Range.clip((drive - turn)* drivePowerScale, -1.0, 1.0);
+            double turn = gamepad1.left_stick_x;
+            double leftMotorPower = Range.clip((drive - turn) * drivePowerScale, -1.0, 1.0);
             double rightMotorPower = Range.clip((drive + turn) * drivePowerScale, -1.0, 1.0);
             robot.leftMotor.setPower(leftMotorPower);
             robot.rightMotor.setPower(rightMotorPower);
 
             // Use Arm Control based on Right Stick Choice
             if (robot.kinematicEnabled) { // Drive using Kinematic Control
-                robot.armTargetX += gamepad1.right_stick_x/2;
-                robot.armTargetY -= gamepad1.right_stick_y/2;
-                robot.armTargetX = Range.clip(robot.armTargetX, 0,27);
-                robot.armTargetY = Range.clip(robot.armTargetY, 0,27);
+                robot.armTargetX += gamepad1.right_stick_x / 2;
+                robot.armTargetY -= gamepad1.right_stick_y / 2;
+                robot.armTargetX = Range.clip(robot.armTargetX, 0, 27);
+                robot.armTargetY = Range.clip(robot.armTargetY, 0, 27);
                 robot.executeKinematics();
+                doPid(pid);
             } else { // Drive Manual Control
                 //**************** Shoulder (Controller A) ******************************
                 // Control: Right stick left/right :: Shoulder in/out
@@ -97,8 +90,8 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
                     robot.setElbowAngle = robot.elbowAngle;
                     robot.elbowDriven = true;
                 } else {
-                    robot.elbowServo.setPower(0);
                     robot.elbowDriven = false;
+                    doPid(pid);
                 }
 
                 //**************** Wrist (Controller A) *********************************
@@ -137,15 +130,14 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
 
             // TODO: Buttons for: Fold, Retrieve, Dump
             /** *************** Special functions (Controller A) ****************************
-                * Note: Most of these special functions block other operations until finished
-
-            ***********************************************************************
-            * Control: X/B :: shift left/shift right
-            ***********************************************************************/
+             * Note: Most of these special functions block other operations until finished
+             ***********************************************************************
+             * Control: X/B :: shift left/shift right
+             ***********************************************************************/
             if (gamepad1.b) {
                 robot.shift("right");
             }
-            if (gamepad1.x){
+            if (gamepad1.x) {
                 robot.shift("left");
             }
 
@@ -155,5 +147,12 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
             // -3500 parallel to floor
             //***********************************************************************
         }
+    }
+
+    void doPid(PIDController pid) {
+        pid.setSetpoint(robot.setElbowAngle);
+        double correction = pid.performPID(robot.elbowAngle);
+        telemetry.addData("elbow power correction: ", correction);
+        robot.elbowServo.setPower(correction);
     }
 }

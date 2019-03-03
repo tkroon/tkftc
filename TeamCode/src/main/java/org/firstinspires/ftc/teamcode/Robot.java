@@ -27,8 +27,6 @@ public class Robot {
         this.opMode = opMode;
         // upper arm length; lower arm length; shoulder min,max; elbow min,max; wrist min,max
         kinematics = new Kinematics(15, 12, 0, 142, 5, 180, 0, 90);
-        //Kp, Ti, Td, IntegralMin, IntegralMax, -OutputMin, OutputMax
-        pidElbow =  new Pid(.2, .03, .03, -.05, .05, -.5, .5);
 
         //**************** Motors ************************************/
         leftMotor = hardwareMap.get(DcMotor.class, "leftMotor");
@@ -220,26 +218,6 @@ public class Robot {
         // **** Wrist ****
     }
 
-    /** ************** Elbow PID ********************************************
-    * Keep elbow at last set angle.
-    * elbow up + / down -
-    * 90deg straight up
-    * angle gets greater as forearm moves to floor
-    * positive error means arm below set pos :: need (+) power
-    * negative error means arm above set pos :: need (-) power
-     *************************************************************************/
-    void elbowPid(double pidPower) {
-        double error = setElbowAngle - elbowAngle;
-        telemetry.addData("angle Error", error);
-        if (!elbowDriven) {
-            if (error > 0) { //posivite needs + power arm up
-                elbowServo.setPower(pidPower + (error / 11));
-            } else { // negative needs - power arm down
-                elbowServo.setPower(-pidPower + (error / 11));
-            }
-        }
-    }
-
     // shift the robot right/left a fixed amount
     void shift(String direction) {
         double heading = getHeading();
@@ -253,6 +231,8 @@ public class Robot {
         setHeading(heading, speed, allowance);
         move(speed, -6);
     }
+
+
 
     // Variable Definitions for Robot
     // System
