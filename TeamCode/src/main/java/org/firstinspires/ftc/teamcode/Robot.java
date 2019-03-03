@@ -236,8 +236,6 @@ public class Robot {
         move(speed, -6);
     }
 
-
-
     // Variable Definitions for Robot
     // System
     protected DcMotor leftMotor;
