@@ -4,7 +4,7 @@
 
 # Android Studio
 *.iml
-.idea
+*.idea
 #.idea/workspace.xml - remove # and delete .idea if it better suit your needs.
 .navigation
 captures/
@@ -32,6 +32,7 @@ gen/
 # Ignore gradle files
 .gradle/
 build/
+*/build/*
 
 # Local configuration file (sdk path, etc)
 local.properties
