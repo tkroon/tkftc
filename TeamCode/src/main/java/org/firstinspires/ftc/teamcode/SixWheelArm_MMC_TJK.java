@@ -14,7 +14,6 @@ public class SixWheelArm_MMC_TJK extends LinearOpMode {
     private double elbowPowerScale = 1;
     private double wristIncrement = 0.017;
     //ElapsedTime elapsedTimer;
-
     @Override
     public void runOpMode() {
         // initialize Robot
